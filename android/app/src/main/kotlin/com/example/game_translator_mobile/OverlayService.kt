@@ -168,15 +168,21 @@ class OverlayService : Service() {
             ImageView(this).apply {
                 setImageBitmap(bitmap)
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                setPadding(10, 10, 10, 10)
-                setBackgroundColor(Color.argb(210, 20, 20, 40))
+                setPadding(12, 12, 12, 12)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.argb(210, 20, 20, 40))
+                    cornerRadius = 28f
+                }
             }
         } catch (e: Exception) {
             TextView(this).apply {
                 setText("🌐")
                 textSize = 32f
                 gravity = Gravity.CENTER
-                setBackgroundColor(Color.argb(200, 108, 99, 255))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.argb(200, 108, 99, 255))
+                    cornerRadius = 28f
+                }
                 setPadding(16, 16, 16, 16)
             }
         }
@@ -185,12 +191,16 @@ class OverlayService : Service() {
         // Botão ✕ no canto superior direito para fechar o overlay
         val closeBtn = TextView(this).apply {
             setText("✕")
-            textSize = 13f
+            textSize = 12f
             gravity = Gravity.CENTER
+            includeFontPadding = false
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.argb(230, 180, 30, 30))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(Color.argb(235, 200, 40, 40))
+            }
         }
-        val closeBtnLp = FrameLayout.LayoutParams(40, 40).apply {
+        val closeBtnLp = FrameLayout.LayoutParams(44, 44).apply {
             gravity = Gravity.TOP or Gravity.END
         }
         mainBtn.addView(closeBtn, closeBtnLp)
@@ -229,14 +239,18 @@ class OverlayService : Service() {
         // ----- Botão de re-traduzir: usa a última área já selecionada -----
         val retranslateBtn = TextView(this).apply {
             setText("⟳")
-            textSize = 30f
+            textSize = 34f
             gravity = Gravity.CENTER
+            includeFontPadding = false
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.argb(230, 40, 130, 95))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.argb(235, 40, 150, 100))
+                cornerRadius = 28f
+            }
             setOnClickListener { retranslateLast() }
         }
-        val retranslateLp = LinearLayout.LayoutParams(160, 90).apply {
-            topMargin = 12
+        val retranslateLp = LinearLayout.LayoutParams(160, 120).apply {
+            topMargin = 14
         }
 
         fab.addView(mainBtn, LinearLayout.LayoutParams(160, 160))
