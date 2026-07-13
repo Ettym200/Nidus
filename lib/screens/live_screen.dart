@@ -1,9 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:speech_to_text/speech_recognition_error.dart';
 import '../services/api_config.dart';
+
+/// Erros normais do STT do Android — não devem assustar o usuário.
+bool _isSoftSttError(String msg) {
+  final m = msg.toLowerCase();
+  return m.contains('no_match') ||
+      m.contains('error_no_match') ||
+      m.contains('busy') ||
+      m.contains('error_busy') ||
+      m.contains('speech_timeout') ||
+      m.contains('error_speech_timeout') ||
+      m.contains('client') ||
+      m.contains('error_client') ||
+      m.contains('network_timeout') ||
+      m.contains('timeout');
+}
 
 class LiveScreen extends StatefulWidget {
   final SharedPreferences prefs;
@@ -21,6 +39,8 @@ class _LiveScreenState extends State<LiveScreen> {
   bool _listening = false;
   bool _busy = false;
   bool _available = false;
+  bool _restartScheduled = false;
+  Timer? _restartTimer;
   late String _lang;
 
   static const _languages = [
@@ -42,20 +62,44 @@ class _LiveScreenState extends State<LiveScreen> {
     }
     _available = await _speech.initialize(
       onStatus: (s) {
-        if (s == 'done' || s == 'notListening') {
-          if (_listening && mounted) {
-            // Reinicia escuta contínua
-            Future.delayed(const Duration(milliseconds: 300), _resumeListen);
-          }
+        if (!_listening || !mounted) return;
+        if (s == 'listening') {
+          setState(() => _status = 'Ouvindo...');
+        } else if (s == 'done' || s == 'notListening') {
+          _scheduleRestart(delayMs: 1200);
         }
       },
-      onError: (e) {
-        if (mounted) setState(() => _status = 'STT: ${e.errorMsg}');
+      onError: (SpeechRecognitionError e) {
+        if (!mounted || !_listening) return;
+        // Erros “soft” são esperados em escuta contínua — só reinicia sem bip visual.
+        if (_isSoftSttError(e.errorMsg)) {
+          _scheduleRestart(delayMs: 1500);
+          return;
+        }
+        setState(() => _status = 'Erro de áudio: ${e.errorMsg}');
+        _scheduleRestart(delayMs: 2000);
       },
     );
     if (mounted) {
-      setState(() => _status = _available ? 'Pronto (microfone)' : 'STT indisponível neste aparelho');
+      setState(() =>
+          _status = _available ? 'Pronto (microfone)' : 'STT indisponível neste aparelho');
     }
+  }
+
+  void _scheduleRestart({int delayMs = 1200}) {
+    if (!_listening || _restartScheduled) return;
+    _restartScheduled = true;
+    _restartTimer?.cancel();
+    _restartTimer = Timer(Duration(milliseconds: delayMs), () async {
+      _restartScheduled = false;
+      if (!_listening || !mounted) return;
+      // Evita misturar restart com tradução / mic ocupado.
+      if (_busy || _speech.isListening) {
+        _scheduleRestart(delayMs: 800);
+        return;
+      }
+      await _resumeListen();
+    });
   }
 
   String get _localeId {
@@ -102,25 +146,37 @@ class _LiveScreenState extends State<LiveScreen> {
 
   Future<void> _resumeListen() async {
     if (!_listening || !mounted) return;
-    await _speech.listen(
-      localeId: _localeId,
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 2),
-      partialResults: true,
-      onResult: (result) async {
-        if (!mounted) return;
-        setState(() => _partial = result.recognizedWords);
-        if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
-          final spoken = result.recognizedWords.trim();
-          setState(() => _partial = '');
-          await _translateSpoken(spoken);
-        }
-      },
-    );
+    try {
+      await _speech.listen(
+        localeId: _localeId,
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 4),
+        listenOptions: stt.SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: stt.ListenMode.dictation,
+          enableHapticFeedback: false,
+          autoPunctuation: true,
+        ),
+        onResult: (result) async {
+          if (!mounted || !_listening) return;
+          setState(() => _partial = result.recognizedWords);
+          if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
+            final spoken = result.recognizedWords.trim();
+            setState(() => _partial = '');
+            await _translateSpoken(spoken);
+          }
+        },
+      );
+    } catch (_) {
+      _scheduleRestart(delayMs: 1500);
+    }
   }
 
   Future<void> _translateSpoken(String spoken) async {
     if (_busy) return;
+    // Filtra lixo / alucinações curtas demais
+    if (spoken.length < 2) return;
     final t = translatorFromPrefs(widget.prefs);
     if (t == null) return;
     setState(() {
@@ -130,26 +186,32 @@ class _LiveScreenState extends State<LiveScreen> {
     try {
       final translated = await t.translateText(spoken, language: _lang);
       if (!mounted) return;
+      if (translated.trim().isEmpty) return;
       setState(() {
         _history.insert(0, translated);
         if (_history.length > 8) _history.removeLast();
         _status = _listening ? 'Ouvindo...' : 'Parado';
       });
     } catch (e) {
-      if (mounted) setState(() => _status = 'Erro: $e');
+      if (mounted) setState(() => _status = 'Erro na API: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
+      // Continua ouvindo depois da tradução
+      if (_listening) _scheduleRestart(delayMs: 400);
     }
   }
 
   Future<void> _stop() async {
-    setState(() => _listening = false);
+    _listening = false;
+    _restartTimer?.cancel();
+    _restartScheduled = false;
     await _speech.stop();
-    setState(() => _status = 'Parado');
+    if (mounted) setState(() => _status = 'Parado');
   }
 
   @override
   void dispose() {
+    _restartTimer?.cancel();
     _speech.stop();
     super.dispose();
   }
@@ -167,10 +229,20 @@ class _LiveScreenState extends State<LiveScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Captura áudio pelo microfone, reconhece a fala e traduz em tempo real. '
-              'Aproxime o celular do áudio da live/vídeo.',
-              style: TextStyle(color: Colors.white54, fontSize: 13),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF16213E),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF2A2A4A)),
+              ),
+              child: const Text(
+                'Usa o microfone do celular (STT do Android).\n'
+                '• Se a live no mesmo celular pausar, baixe o volume dela ou '
+                'solte o áudio em outro aparelho/caixa e deixe o Nidus ouvir.\n'
+                '• Erros tipo “no match / busy / timeout” são normais e ficam ocultos.',
+                style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.35),
+              ),
             ),
             const SizedBox(height: 12),
             Row(

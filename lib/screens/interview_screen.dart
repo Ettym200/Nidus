@@ -1,9 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:speech_to_text/speech_recognition_error.dart';
 import '../services/api_config.dart';
+
+bool _isSoftSttError(String msg) {
+  final m = msg.toLowerCase();
+  return m.contains('no_match') ||
+      m.contains('busy') ||
+      m.contains('speech_timeout') ||
+      m.contains('timeout') ||
+      m.contains('error_client') ||
+      m.contains('client');
+}
 
 class InterviewScreen extends StatefulWidget {
   final SharedPreferences prefs;
@@ -27,6 +40,8 @@ class _InterviewScreenState extends State<InterviewScreen> {
   bool _running = false;
   bool _busy = false;
   bool _available = false;
+  bool _restartScheduled = false;
+  Timer? _restartTimer;
 
   static const _types = ['Geral', 'Técnica', 'Comportamental', 'RH / Cultura'];
   static const _languages = [
@@ -46,6 +61,7 @@ class _InterviewScreenState extends State<InterviewScreen> {
 
   @override
   void dispose() {
+    _restartTimer?.cancel();
     _speech.stop();
     _contextCtrl.dispose();
     super.dispose();
@@ -59,15 +75,37 @@ class _InterviewScreenState extends State<InterviewScreen> {
     }
     _available = await _speech.initialize(
       onStatus: (s) {
-        if ((s == 'done' || s == 'notListening') && _running && mounted) {
-          Future.delayed(const Duration(milliseconds: 300), _resumeListen);
+        if (!_running || !mounted) return;
+        if (s == 'done' || s == 'notListening') {
+          _scheduleRestart(delayMs: 1200);
         }
       },
-      onError: (e) {
-        if (mounted) setState(() => _status = 'STT: ${e.errorMsg}');
+      onError: (SpeechRecognitionError e) {
+        if (!_running || !mounted) return;
+        if (_isSoftSttError(e.errorMsg)) {
+          _scheduleRestart(delayMs: 1500);
+          return;
+        }
+        setState(() => _status = 'Erro de áudio: ${e.errorMsg}');
+        _scheduleRestart(delayMs: 2000);
       },
     );
     if (mounted && _available) setState(() => _status = 'Pronto');
+  }
+
+  void _scheduleRestart({int delayMs = 1200}) {
+    if (!_running || _restartScheduled) return;
+    _restartScheduled = true;
+    _restartTimer?.cancel();
+    _restartTimer = Timer(Duration(milliseconds: delayMs), () async {
+      _restartScheduled = false;
+      if (!_running || !mounted) return;
+      if (_busy || _speech.isListening) {
+        _scheduleRestart(delayMs: 800);
+        return;
+      }
+      await _resumeListen();
+    });
   }
 
   String get _localeId {
@@ -108,37 +146,47 @@ class _InterviewScreenState extends State<InterviewScreen> {
 
   Future<void> _resumeListen() async {
     if (!_running || !mounted) return;
-    await _speech.listen(
-      localeId: _localeId,
-      listenFor: const Duration(seconds: 45),
-      pauseFor: const Duration(milliseconds: 2200),
-      partialResults: true,
-      onResult: (result) async {
-        if (!mounted || !_running) return;
-        setState(() {
-          _partial = result.recognizedWords;
-          _lastSpeechAt = DateTime.now();
-        });
-        if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
-          final chunk = result.recognizedWords.trim();
-          if (_buffer.isNotEmpty) _buffer.write(' ');
-          _buffer.write(chunk);
+    try {
+      await _speech.listen(
+        localeId: _localeId,
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 3),
+        listenOptions: stt.SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: stt.ListenMode.dictation,
+          enableHapticFeedback: false,
+          autoPunctuation: true,
+        ),
+        onResult: (result) async {
+          if (!mounted || !_running) return;
           setState(() {
-            _question = _buffer.toString();
-            _partial = '';
+            _partial = result.recognizedWords;
+            _lastSpeechAt = DateTime.now();
           });
-          // Espera pausa um pouco maior antes de gerar resposta
-          await Future.delayed(const Duration(milliseconds: 800));
-          final quiet = _lastSpeechAt == null ||
-              DateTime.now().difference(_lastSpeechAt!) > const Duration(milliseconds: 1500);
-          if (quiet && _buffer.isNotEmpty && !_busy) {
-            final full = _buffer.toString();
-            _buffer.clear();
-            await _suggest(full);
+          if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
+            final chunk = result.recognizedWords.trim();
+            if (_buffer.isNotEmpty) _buffer.write(' ');
+            _buffer.write(chunk);
+            setState(() {
+              _question = _buffer.toString();
+              _partial = '';
+            });
+            await Future.delayed(const Duration(milliseconds: 1000));
+            final quiet = _lastSpeechAt == null ||
+                DateTime.now().difference(_lastSpeechAt!) >
+                    const Duration(milliseconds: 1800);
+            if (quiet && _buffer.isNotEmpty && !_busy) {
+              final full = _buffer.toString();
+              _buffer.clear();
+              await _suggest(full);
+            }
           }
-        }
-      },
-    );
+        },
+      );
+    } catch (_) {
+      _scheduleRestart(delayMs: 1500);
+    }
   }
 
   Future<void> _suggest(String question) async {
@@ -165,13 +213,16 @@ class _InterviewScreenState extends State<InterviewScreen> {
       if (mounted) setState(() => _status = 'Erro: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
+      if (_running) _scheduleRestart(delayMs: 400);
     }
   }
 
   Future<void> _stop() async {
-    setState(() => _running = false);
+    _running = false;
+    _restartTimer?.cancel();
+    _restartScheduled = false;
     await _speech.stop();
-    setState(() => _status = 'Parado');
+    if (mounted) setState(() => _status = 'Parado');
   }
 
   @override
