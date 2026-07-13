@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'screens/home_screen.dart';
+import 'screens/main_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,8 +24,15 @@ class GameTranslatorApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: const Color(0xFF1A1A2E),
         cardColor: const Color(0xFF16213E),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFF16213E),
+          indicatorColor: const Color(0x336C63FF),
+          labelTextStyle: MaterialStateProperty.all(
+            const TextStyle(fontSize: 11, color: Colors.white70),
+          ),
+        ),
       ),
-      home: HomeScreen(prefs: prefs),
+      home: MainShell(prefs: prefs),
     );
   }
 }

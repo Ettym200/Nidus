@@ -11,7 +11,16 @@ Se alguém te **vendeu** o Nidus, você está sendo **enganado** — baixe sempr
 partir do repositório oficial. Se quiser, você pode **apoiar o projeto
 voluntariamente** (via Pix, dentro do app), mas isso é opcional.
 
-## Como usar
+## Funcionalidades (v1.1.0)
+
+- **Jogo** — overlay flutuante (seleciona área da tela e traduz)
+- **Live** — ouve pelo microfone e traduz a fala em tempo real
+- **Entrevista** — ouve perguntas e sugere respostas com base no seu perfil
+- **Traduzir Texto** — cola qualquer texto e traduz
+- **Uga Buga** — resume skills/itens no estilo meme (texto ou prints)
+- **Estilos de overlay** — transparente, semi, escuro, preto, azul (Configurações)
+
+## Como usar (overlay)
 
 1. Configure sua API key (⚙️)
 2. Toque em "Ativar Overlay"
@@ -19,6 +28,9 @@ voluntariamente** (via Pix, dentro do app), mas isso é opcional.
 4. Toque no botão 🌐 flutuante
 5. Arraste para selecionar o texto
 6. A tradução aparece na tela!
+
+> Live e Entrevista usam o **microfone** do celular (STT do aparelho). Qualidade
+> depende do áudio ambiente / do cliente — aproxime o aparelho do som.
 
 ## Desenvolvimento
 

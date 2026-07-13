@@ -4,6 +4,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _providers = ['openai', 'anthropic', 'openrouter', 'groq', 'custom'];
 const _languages = ['Português', 'English', 'Español', 'Français', 'Deutsch', '日本語', '한국어', '中文'];
+const _overlayStyles = {
+  'transparent': 'Transparente',
+  'semi': 'Semi-transparente',
+  'dark': 'Escuro',
+  'black': 'Preto',
+  'blue': 'Azul escuro',
+};
 
 class SettingsScreen extends StatefulWidget {
   final SharedPreferences prefs;
@@ -16,6 +23,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late String _provider;
   late String _language;
+  late String _overlayStyle;
   final TextEditingController _modelCtrl = TextEditingController();
   final TextEditingController _customUrlCtrl = TextEditingController();
 
@@ -29,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = widget.prefs;
     _provider = prefs.getString('provider') ?? 'openai';
     _language = prefs.getString('language') ?? 'Português';
+    _overlayStyle = prefs.getString('overlay_style') ?? 'dark';
     _modelCtrl.text = prefs.getString('model') ?? '';
     _customUrlCtrl.text = prefs.getString('custom_base_url') ?? '';
 
@@ -59,6 +68,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = widget.prefs;
     prefs.setString('provider', _provider);
     prefs.setString('language', _language);
+    prefs.setString('overlay_style', _overlayStyle);
     prefs.setString('model', _modelCtrl.text.trim());
     prefs.setString('custom_base_url', _customUrlCtrl.text.trim());
 
@@ -153,6 +163,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   .map((l) => DropdownMenuItem(value: l, child: Text(l)))
                   .toList(),
               onChanged: (v) => setState(() => _language = v!),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+          _sectionTitle('Fundo do overlay'),
+          _card(
+            DropdownButtonFormField<String>(
+              value: _overlayStyle,
+              dropdownColor: const Color(0xFF16213E),
+              style: const TextStyle(color: Colors.white),
+              decoration: _inputDecoration('Estilo da caixa de tradução'),
+              items: _overlayStyles.entries
+                  .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                  .toList(),
+              onChanged: (v) => setState(() => _overlayStyle = v!),
             ),
           ),
 

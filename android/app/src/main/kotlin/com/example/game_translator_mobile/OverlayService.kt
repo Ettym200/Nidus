@@ -60,6 +60,7 @@ class OverlayService : Service() {
     private var model = ""
     private var language = ""
     private var customUrl = ""
+    private var overlayStyle = "dark"
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val client = OkHttpClient()
@@ -92,6 +93,7 @@ class OverlayService : Service() {
         model = intent?.getStringExtra("model") ?: ""
         language = intent?.getStringExtra("language") ?: "Português"
         customUrl = intent?.getStringExtra("customUrl") ?: ""
+        overlayStyle = intent?.getStringExtra("overlayStyle") ?: "dark"
 
         val resultCode = intent?.getIntExtra("resultCode", 0) ?: 0
         val projData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
@@ -573,6 +575,17 @@ class OverlayService : Service() {
         return json.getJSONArray("content").getJSONObject(0).getString("text").trim()
     }
 
+    private fun overlayStyleColors(style: String): Pair<Int, Int> {
+        // background ARGB, border ARGB
+        return when (style) {
+            "transparent" -> Pair(Color.argb(120, 10, 10, 20), Color.argb(180, 255, 255, 255))
+            "semi" -> Pair(Color.argb(180, 15, 20, 35), Color.argb(200, 108, 99, 255))
+            "black" -> Pair(Color.argb(235, 0, 0, 0), Color.argb(200, 80, 80, 80))
+            "blue" -> Pair(Color.argb(235, 8, 16, 40), Color.argb(200, 60, 140, 220))
+            else -> Pair(Color.argb(235, 15, 15, 25), Color.argb(200, 108, 99, 255)) // dark
+        }
+    }
+
     private fun showResult(text: String) {
         resultView?.let { try { windowManager?.removeView(it) } catch (e: Exception) {} }
 
@@ -601,14 +614,13 @@ class OverlayService : Service() {
         }
 
         // Caixa de texto com X no canto
+        val styleColors = overlayStyleColors(overlayStyle)
         val container = FrameLayout(this).apply {
-            setBackgroundColor(Color.argb(235, 15, 15, 25))
             setPadding(0, 0, 0, 0)
         }
-        // Borda roxa sutil
         container.background = android.graphics.drawable.GradientDrawable().apply {
-            setColor(Color.argb(235, 15, 15, 25))
-            setStroke(3, Color.argb(200, 108, 99, 255))
+            setColor(styleColors.first)
+            setStroke(3, styleColors.second)
             cornerRadius = 16f
         }
 
@@ -625,7 +637,7 @@ class OverlayService : Service() {
             textSize = 14f
             setTextColor(Color.argb(200, 255, 255, 255))
             setPadding(10, 6, 10, 6)
-            setBackgroundColor(Color.argb(120, 108, 99, 255))
+            setBackgroundColor(Color.argb(120, Color.red(styleColors.second), Color.green(styleColors.second), Color.blue(styleColors.second)))
         }
         val closeLp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,

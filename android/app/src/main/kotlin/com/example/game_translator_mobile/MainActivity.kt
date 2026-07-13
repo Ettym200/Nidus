@@ -54,6 +54,7 @@ class MainActivity : FlutterActivity() {
                         val model = call.argument<String>("model") ?: ""
                         val language = call.argument<String>("language") ?: "Português"
                         val customUrl = call.argument<String>("customUrl") ?: ""
+                        val overlayStyle = call.argument<String>("overlayStyle") ?: "dark"
 
                         if (!Settings.canDrawOverlays(this)) {
                             result.error("NO_PERMISSION", "Permissão de overlay não concedida", null)
@@ -70,13 +71,14 @@ class MainActivity : FlutterActivity() {
                                 .putString("model", model)
                                 .putString("language", language)
                                 .putString("customUrl", customUrl)
+                                .putString("overlayStyle", overlayStyle)
                                 .apply()
                             startActivityForResult(
                                 mediaProjectionManager!!.createScreenCaptureIntent(),
                                 REQ_PROJECTION
                             )
                         } else {
-                            launchOverlayService(apiKey, provider, model, language, customUrl)
+                            launchOverlayService(apiKey, provider, model, language, customUrl, overlayStyle)
                             result.success(true)
                         }
                     }
@@ -100,7 +102,7 @@ class MainActivity : FlutterActivity() {
 
     private fun launchOverlayService(
         apiKey: String, provider: String, model: String,
-        language: String, customUrl: String
+        language: String, customUrl: String, overlayStyle: String
     ) {
         val intent = Intent(this, OverlayService::class.java).apply {
             putExtra("apiKey", apiKey)
@@ -108,6 +110,7 @@ class MainActivity : FlutterActivity() {
             putExtra("model", model)
             putExtra("language", language)
             putExtra("customUrl", customUrl)
+            putExtra("overlayStyle", overlayStyle)
             putExtra("resultCode", projectionResultCode)
             putExtra("projectionData", projectionData)
         }
@@ -139,7 +142,8 @@ class MainActivity : FlutterActivity() {
                             prefs.getString("provider", "openai") ?: "openai",
                             prefs.getString("model", "") ?: "",
                             prefs.getString("language", "Português") ?: "Português",
-                            prefs.getString("customUrl", "") ?: ""
+                            prefs.getString("customUrl", "") ?: "",
+                            prefs.getString("overlayStyle", "dark") ?: "dark"
                         )
                         pendingResult?.success(true)
                     }

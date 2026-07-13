@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final model = prefs.getString('model') ?? '';
     final language = prefs.getString('language') ?? 'Português';
     final customUrl = prefs.getString('custom_base_url') ?? '';
+    final overlayStyle = prefs.getString('overlay_style') ?? 'dark';
 
     if (apiKey.isEmpty) {
       setState(() => _status = 'Configure sua API key primeiro!');
@@ -66,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
         'model': model,
         'language': language,
         'customUrl': customUrl,
+        'overlayStyle': overlayStyle,
       });
 
       setState(() {
