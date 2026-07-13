@@ -72,6 +72,21 @@ class _LiveScreenState extends State<LiveScreen> {
       return;
     }
 
+    // Card flutuante precisa de overlay
+    try {
+      final hasOverlay =
+          await _channel.invokeMethod<bool>('checkOverlayPermission') ?? false;
+      if (!hasOverlay) {
+        setState(() => _status = 'Ative “exibir sobre outros apps” para o card flutuante...');
+        final granted =
+            await _channel.invokeMethod<bool>('requestOverlayPermission') ?? false;
+        if (!granted) {
+          setState(() => _status =
+              'Sem permissão de overlay o Live funciona, mas o card flutuante não aparece.');
+        }
+      }
+    } catch (_) {}
+
     setState(() {
       _status = 'Autorize a captura de tela/áudio...';
     });
@@ -136,11 +151,24 @@ class _LiveScreenState extends State<LiveScreen> {
         _partial = '';
         _status = 'Capturando áudio interno...';
       });
+      await _showFloatingCard();
     } catch (e) {
       if (mounted) setState(() => _status = 'Erro: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _showFloatingCard() async {
+    // Mostra as últimas traduções no card (estilo overlay do modo Jogo)
+    final lines = _history.take(4).toList().reversed.join('\n');
+    final style = widget.prefs.getString('overlay_style') ?? 'dark';
+    try {
+      await _channel.invokeMethod('showFloatingTranslation', {
+        'text': lines,
+        'style': style,
+      });
+    } catch (_) {}
   }
 
   Future<void> _stop() async {
@@ -149,6 +177,7 @@ class _LiveScreenState extends State<LiveScreen> {
     _sub = null;
     try {
       await _channel.invokeMethod('stopLiveAudio');
+      await _channel.invokeMethod('hideFloatingTranslation');
     } catch (_) {}
     setState(() {
       _status = 'Parado';
@@ -177,9 +206,9 @@ class _LiveScreenState extends State<LiveScreen> {
                 border: Border.all(color: const Color(0xFF03DAC6), width: 1),
               ),
               child: const Text(
-                'Agora captura o áudio INTERNO da tela (Android 10+) — '
-                'não usa o microfone para escutar a live, então não deve mais pausar o vídeo.\n\n'
-                'Ao iniciar, aceite a permissão de captura. '
+                'Captura o áudio INTERNO da tela (Android 10+) e mostra a tradução '
+                'num card flutuante (igual ao overlay do modo Jogo).\n\n'
+                'Precisa permitir “exibir sobre outros apps” + captura de tela. '
                 'Use OpenAI, Groq ou OpenRouter (Whisper).',
                 style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.35),
               ),

@@ -141,6 +141,25 @@ class MainActivity : FlutterActivity() {
                         }
                         startService(stop)
                         stopService(Intent(this, LiveAudioService::class.java))
+                        FloatingTranslationOverlay.hide()
+                        result.success(true)
+                    }
+                    "showFloatingTranslation" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        val style = call.argument<String>("style") ?: "dark"
+                        if (text.isBlank()) {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                        if (!Settings.canDrawOverlays(this)) {
+                            result.error("NO_PERMISSION", "Permissão de overlay necessária", null)
+                            return@setMethodCallHandler
+                        }
+                        FloatingTranslationOverlay.show(this, text, style)
+                        result.success(true)
+                    }
+                    "hideFloatingTranslation" -> {
+                        FloatingTranslationOverlay.hide()
                         result.success(true)
                     }
                     else -> result.notImplemented()
