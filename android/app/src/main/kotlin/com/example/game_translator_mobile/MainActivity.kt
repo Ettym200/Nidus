@@ -9,12 +9,15 @@ import android.os.Build
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "game_translator/overlay"
+    private val LIVE_EVENTS = "game_translator/live_audio"
     private val REQ_OVERLAY = 101
     private val REQ_PROJECTION = 102
+    private val REQ_LIVE_PROJECTION = 103
 
     private var mediaProjectionManager: MediaProjectionManager? = null
     private var pendingResult: MethodChannel.Result? = null
@@ -23,11 +26,36 @@ class MainActivity : FlutterActivity() {
     private var projectionResultCode = 0
     private var projectionData: Intent? = null
 
+    private var liveEventSink: EventChannel.EventSink? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
         mediaProjectionManager =
             getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, LIVE_EVENTS)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    liveEventSink = events
+                    LiveAudioService.chunkListener = { path ->
+                        runOnUiThread {
+                            liveEventSink?.success(mapOf("type" to "chunk", "path" to path))
+                        }
+                    }
+                    LiveAudioService.statusListener = { status ->
+                        runOnUiThread {
+                            liveEventSink?.success(mapOf("type" to "status", "message" to status))
+                        }
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    liveEventSink = null
+                    LiveAudioService.chunkListener = null
+                    LiveAudioService.statusListener = null
+                }
+            })
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -64,7 +92,6 @@ class MainActivity : FlutterActivity() {
                         if (projectionData == null) {
                             pendingResult = result
                             pendingAction = "startOverlay"
-                            // Salva params para usar depois
                             getSharedPreferences("overlay_params", Context.MODE_PRIVATE).edit()
                                 .putString("apiKey", apiKey)
                                 .putString("provider", provider)
@@ -95,6 +122,27 @@ class MainActivity : FlutterActivity() {
                             .any { it.service.className == OverlayService::class.java.name }
                         result.success(running)
                     }
+                    "startLiveAudio" -> {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                            result.error("UNSUPPORTED", "Áudio interno requer Android 10+", null)
+                            return@setMethodCallHandler
+                        }
+                        // Sempre pede captura fresca para o Live (não reutiliza a do overlay)
+                        pendingResult = result
+                        pendingAction = "startLiveAudio"
+                        startActivityForResult(
+                            mediaProjectionManager!!.createScreenCaptureIntent(),
+                            REQ_LIVE_PROJECTION
+                        )
+                    }
+                    "stopLiveAudio" -> {
+                        val stop = Intent(this, LiveAudioService::class.java).apply {
+                            action = LiveAudioService.ACTION_STOP
+                        }
+                        startService(stop)
+                        stopService(Intent(this, LiveAudioService::class.java))
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -113,6 +161,18 @@ class MainActivity : FlutterActivity() {
             putExtra("overlayStyle", overlayStyle)
             putExtra("resultCode", projectionResultCode)
             putExtra("projectionData", projectionData)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    private fun launchLiveAudioService(resultCode: Int, data: Intent) {
+        val intent = Intent(this, LiveAudioService::class.java).apply {
+            putExtra("resultCode", resultCode)
+            putExtra("projectionData", data)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -147,6 +207,16 @@ class MainActivity : FlutterActivity() {
                         )
                         pendingResult?.success(true)
                     }
+                } else {
+                    pendingResult?.error("PERMISSION_DENIED", "Permissão de captura negada", null)
+                }
+                pendingResult = null
+                pendingAction = null
+            }
+            REQ_LIVE_PROJECTION -> {
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    launchLiveAudioService(resultCode, data)
+                    pendingResult?.success(true)
                 } else {
                     pendingResult?.error("PERMISSION_DENIED", "Permissão de captura negada", null)
                 }

@@ -149,6 +149,59 @@ class TranslatorService {
     return _textChat(prompt, maxTokens: 2000);
   }
 
+  /// Whisper (OpenAI / Groq / OpenRouter). Anthropic não tem STT.
+  String get whisperModel {
+    switch (provider) {
+      case 'groq':
+        return 'whisper-large-v3';
+      case 'openrouter':
+        return 'openai/whisper-1';
+      default:
+        return 'whisper-1';
+    }
+  }
+
+  bool get supportsWhisper => provider != 'anthropic';
+
+  Future<String> transcribeWav(Uint8List wavBytes, {String language = 'auto'}) async {
+    if (!supportsWhisper) {
+      throw Exception(
+        'Provedor Anthropic não tem Whisper. Use OpenAI, Groq ou OpenRouter no Live.',
+      );
+    }
+    final uri = Uri.parse('$_baseUrl/audio/transcriptions');
+    final req = http.MultipartRequest('POST', uri);
+    req.headers['Authorization'] = 'Bearer $apiKey';
+    req.fields['model'] = whisperModel;
+    if (language != 'auto' && language.isNotEmpty) {
+      // códigos curtos quando possível
+      final code = switch (language) {
+        'Português' => 'pt',
+        'English' => 'en',
+        'Español' => 'es',
+        'Français' => 'fr',
+        'Deutsch' => 'de',
+        '日本語' => 'ja',
+        '한국어' => 'ko',
+        '中文' => 'zh',
+        _ => '',
+      };
+      if (code.isNotEmpty) req.fields['language'] = code;
+    }
+    req.files.add(http.MultipartFile.fromBytes(
+      'file',
+      wavBytes,
+      filename: 'audio.wav',
+    ));
+    final streamed = await req.send();
+    final body = await streamed.stream.bytesToString();
+    if (streamed.statusCode != 200) {
+      throw Exception('Whisper ${streamed.statusCode}: $body');
+    }
+    final data = jsonDecode(body);
+    return (data['text'] as String? ?? '').trim();
+  }
+
   Future<String> _textChat(String prompt, {int maxTokens = 1000}) async {
     if (provider == 'anthropic') {
       final url = Uri.parse('https://api.anthropic.com/v1/messages');

@@ -34,6 +34,10 @@
             android:name=".OverlayService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection"/>
+        <service
+            android:name=".LiveAudioService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection"/>
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
