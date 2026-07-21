@@ -505,7 +505,7 @@ class OverlayService : Service() {
         val mdl = model.ifEmpty {
             when (provider) {
                 "openrouter" -> "openai/gpt-4o-mini"
-                "groq" -> "meta-llama/llama-4-scout-17b-16e-instruct"
+                "groq" -> "qwen/qwen3.6-27b"
                 else -> "gpt-4o-mini"
             }
         }

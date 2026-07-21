@@ -63,7 +63,7 @@ class TranslatorService {
       case 'openrouter':
         return 'openai/gpt-4o-mini';
       case 'groq':
-        return 'meta-llama/llama-4-scout-17b-16e-instruct';
+        return 'qwen/qwen3.6-27b';
       case 'anthropic':
         return 'claude-haiku-4-5-20251001';
       default:
